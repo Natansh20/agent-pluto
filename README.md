@@ -53,7 +53,7 @@ Example tool call:
     "content": "print('hello')"
   }
 }
-
+```
 ### PROCESS
 Runs programs or scripts on the system.
 
