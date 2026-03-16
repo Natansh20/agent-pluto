@@ -21,12 +21,12 @@ def summarize_result(obs_action: str, last_obs: dict) -> str | None:
         return None
     
     if obs_action == "FILESYSTEM":
-        op = last_obs.get("operation")
+        op = last_obs.get("args").get("operation")
         status = last_obs.get("status")
         if status != "success":
             return None
         if op == "read":
-            content = last_obs.get("content", "").strip()
+            content = (last_obs.get("content") or last_obs.get("preview") or "").strip()
             return f"File contents: \n{content}"
         if op in ("create", "write"):
             return None # not terminal, file still needs to be run
@@ -92,6 +92,7 @@ def main():
             # print(f"Extracted from last_obs - op: {op}, path: {path}, status: {status}, obs_action: {obs_action}")
 
             if (obs_action == "FILESYSTEM" and status in ("success", "exists") and op in ("create", "write") and path):
+                print(f"\nSuccessful file write: {path}")
                 last_written_file = path
                 write_count[path] = write_count.get(path, 0) + 1
 
@@ -109,6 +110,7 @@ def main():
                     )
             # PROCESS: script failed -> fix and retry
             elif obs_action == "PROCESS" and (status == "error" or last_obs.get("returncode", 0) != 0):
+                print(f"\nDetected failed script execution.")
                 last_run_failed = True
                 error_detail = last_obs.get("stderr") or last_obs.get("error", "unknown error")
                 directive = (
@@ -127,8 +129,8 @@ def main():
                         f"The task is complete. Respond to the user with the result."
                         f"Do NOT call any more tools"
                     )
-        # if directive:
-        #     print(f"\n[Directive Injected] {directive}")
+        if directive:
+            print(f"\n[Directive Injected] {directive}")
             
         llm_output = query_llm(state["active_goal"], state, directive = directive)
 
@@ -158,7 +160,7 @@ def main():
 
             steps += 1
             result = execute_action(action, args, state)
-            print(f"\n[Tool Result] {result}\n")
+            # print(f"\n[Tool Result] {result}\n")
 
             # Tag the observation with the action so we can detect PROCESS failures
             if isinstance(result, dict):

@@ -9,6 +9,7 @@ from tools.system_info import system_info_tool
 from action_registry import ACTION_REGISTRY
 
 # os.makedirs("python_workspace", exist_ok=True)
+READ_LENGTH = 1000
 
 def execute_action(action, args, agent_state):
 
@@ -22,23 +23,24 @@ def execute_action(action, args, agent_state):
     # CONFIRMATION LAYER
     if metadata and metadata.get("requires_confirmation", False):
 
-        print(f"\nAction: {action}")
-        print(f"Risk Level: {metadata.get('risk')}")
-        print(f"Description: {metadata.get('description')}")
+        print(f"\nAction: {action}", flush=True)
+        print(f"Risk Level: {metadata.get('risk')}", flush=True)
+        print(f"Description: {metadata.get('description')}", flush=True)
 
         # if it's a script, show preview
         if action == "PROCESS" and args.get("script"):
             script_path = args["script"]
             try:
                 with open(script_path, "r", encoding="utf-8") as f:
-                    code_preview = f.read(500)
-                print("\n--- Script Preview (first 500 chars) ---")
-                print(code_preview)
-                print("----------------------------------------")
+                    code_preview = f.read(READ_LENGTH)
+                print(f"\n--- Script Preview (first {READ_LENGTH} chars) ---", flush=True)
+                print(code_preview, flush=True)
+                print("----------------------------------------", flush=True)
             except:
-                print("Could not preview script.")
+                print("Could not preview script.", flush=True)
 
-        confirm = input(f"\nProceed? (yes/no): ")
+        print(f"\nProceed? (yes/no): ", flush=True)
+        confirm = input()
 
         if confirm.lower() != "yes":
             return {"cancelled": True}
