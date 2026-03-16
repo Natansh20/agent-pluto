@@ -264,5 +264,4 @@ Write a Python script that checks whether a number is prime and run it with inpu
 
 ## **Demo Video:**
 
-https://github.com/user-attachments/assets/b4dcbfa5-9f63-4a8a-83b8-eb127ba154a1
-
+https://github.com/user-attachments/assets/a628ea45-ac08-41d5-8852-f2e3d1ac8013
