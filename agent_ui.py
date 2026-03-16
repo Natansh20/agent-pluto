@@ -23,7 +23,7 @@ USER_NAME    = "Natansh"
 BG          = "#111118"
 CARD        = "#1C1C28"
 CARD2       = "#21212F"
-CARD3       = "#18181F"          # log drawer background
+CARD3       = "#18181F"
 BORDER      = "#2A2A3A"
 BORDER_LT   = "#333348"
 ACCENT      = "#7C6AF7"
@@ -38,6 +38,11 @@ AMBER       = "#FBBF24"
 RED         = "#F87171"
 CODE_BG     = "#1A1A2E"
 CODE_FG     = "#A8D8A8"
+
+# Mode-picker specific
+CARD_HOVER  = "#26263A"
+LOCAL_CLR   = "#34D399"   # green tint for local badge
+ONLINE_CLR  = "#7C6AF7"   # accent purple for online badge
 
 # ── Fonts ──────────────────────────────────────────────────────────────────
 F_HEADER    = ("Georgia", 16, "bold")
@@ -57,18 +62,196 @@ F_BOLD      = ("Calibri", 12, "bold")
 F_ITALIC    = ("Calibri", 12, "italic")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Mode-picker splash
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ModePicker(tk.Toplevel):
+    """
+    Blocking modal dialog shown before the agent starts.
+    Sets self.result to "local" or "online" when the user picks.
+    """
+
+    def __init__(self, parent: tk.Tk):
+        super().__init__(parent)
+        self.result = "local"           # default fallback
+        self._hovered = None            # currently hovered card id
+
+        self.title("Pluto — Choose mode")
+        self.configure(bg=BG)
+        self.resizable(False, False)
+
+        # Centre over parent
+        self.update_idletasks()
+
+        w, h = 560, 390
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+
+        x = (sw - w) // 2
+        y = (sh - h) // 2
+
+        self.geometry(f"{w}x{h}+{x}+{y}")
+
+        # Modal
+        self.transient(parent)
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", lambda: self._pick("local"))
+
+        self._build()
+
+    def _build(self):
+        # ── Header ────────────────────────────────────────────────────────
+        top = tk.Frame(self, bg=BG)
+        top.pack(fill="x", padx=40, pady=(36, 0))
+
+        # Small Pluto avatar
+        av = tk.Canvas(top, width=34, height=34, bg=BG, highlightthickness=0)
+        av.pack(side="left", anchor="center")
+        av.create_oval(1, 1, 33, 33, fill=ACCENT_GLOW, outline="")
+        av.create_oval(4, 4, 30, 30, fill=ACCENT, outline="")
+        av.create_text(17, 17, text="P", fill=TEXT_HI, font=("Georgia", 12, "bold"))
+
+        col = tk.Frame(top, bg=BG)
+        col.pack(side="left", padx=(12, 0), anchor="center")
+        tk.Label(col, text="Pluto", fg=TEXT_HI, bg=BG,
+                 font=("Georgia", 14, "bold")).pack(anchor="w")
+        tk.Label(col, text="Select a model backend to continue",
+                 fg=TEXT_DIM, bg=BG, font=("Calibri", 10)).pack(anchor="w")
+
+        # Thin separator
+        sep = tk.Canvas(self, height=1, bg=BG, highlightthickness=0)
+        sep.pack(fill="x", padx=40, pady=(18, 24))
+        self.after(10, lambda: self._draw_sep(sep))
+
+        # ── Cards row ─────────────────────────────────────────────────────
+        row = tk.Frame(self, bg=BG)
+        row.pack(fill="x", padx=40)
+
+        self._local_card  = self._make_card(row, "local")
+        self._online_card = self._make_card(row, "online")
+        self._local_card.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        self._online_card.pack(side="left", fill="both", expand=True, padx=(10, 0))
+
+        # ── Footer hint ───────────────────────────────────────────────────
+        tk.Label(self, text="You can't switch mode without restarting the app.",
+                 fg=TEXT_TINY, bg=BG, font=("Calibri", 9)).pack(pady=(22, 0))
+
+    def _draw_sep(self, canvas: tk.Canvas):
+        w = self.winfo_width() - 80
+        steps = 20
+        for i in range(steps):
+            t  = i / steps
+            r  = int(0x7C + (0x11 - 0x7C) * t)
+            g  = int(0x6A + (0x11 - 0x6A) * t)
+            b  = int(0xF7 + (0x18 - 0xF7) * t)
+            x0 = int(w * i / steps)
+            x1 = int(w * (i + 1) / steps)
+            canvas.create_rectangle(x0, 0, x1, 1,
+                                    fill=f"#{r:02x}{g:02x}{b:02x}", outline="")
+
+    def _make_card(self, parent: tk.Frame, mode: str) -> tk.Frame:
+        """Build a single clickable mode card."""
+        is_local = (mode == "local")
+        badge_color = LOCAL_CLR if is_local else ONLINE_CLR
+        icon        = "⬡" if is_local else "✦"
+        title       = "Local"  if is_local else "Online"
+        subtitle    = "Ollama · qwen2.5" if is_local else "Gemini 3 Flash Preview"
+        bullets     = (
+            ["Private & offline", "No API key needed", "Needs Ollama running"]
+            if is_local else
+            ["Powered by Google", "Free-tier API", "Needs GEMINI_API_KEY"]
+        )
+
+        card = tk.Frame(parent, bg=CARD, cursor="hand2",
+                        highlightbackground=BORDER,
+                        highlightthickness=1)
+
+        # Badge strip at top
+        badge = tk.Frame(card, bg=badge_color, height=3)
+        badge.pack(fill="x")
+
+        inner = tk.Frame(card, bg=CARD)
+        inner.pack(fill="both", expand=True, padx=18, pady=(16, 20))
+
+        # Icon + title row
+        title_row = tk.Frame(inner, bg=CARD)
+        title_row.pack(fill="x")
+        tk.Label(title_row, text=icon, fg=badge_color, bg=CARD,
+                 font=("Georgia", 18)).pack(side="left", padx=(0, 8))
+        tk.Label(title_row, text=title, fg=TEXT_HI, bg=CARD,
+                 font=("Georgia", 13, "bold")).pack(side="left", anchor="s", pady=(0, 2))
+
+        # Subtitle
+        tk.Label(inner, text=subtitle, fg=TEXT_DIM, bg=CARD,
+                 font=("Calibri", 10)).pack(anchor="w", pady=(3, 10))
+
+        # Bullet points
+        for b in bullets:
+            row = tk.Frame(inner, bg=CARD)
+            row.pack(fill="x", pady=1)
+            tk.Label(row, text="·", fg=badge_color, bg=CARD,
+                     font=("Calibri", 11, "bold")).pack(side="left", padx=(0, 6))
+            tk.Label(row, text=b, fg=TEXT, bg=CARD,
+                     font=("Calibri", 10)).pack(side="left")
+
+        # "Select" button
+        btn = tk.Label(inner, text=f"Use {title}  →",
+                       fg=badge_color, bg=CARD,
+                       font=("Calibri", 10, "bold"),
+                       cursor="hand2")
+        btn.pack(anchor="w", pady=(14, 0))
+
+        # Hover / click wiring — bind to every child widget too
+        def _enter(e, c=card):
+            c.config(highlightbackground=badge_color, bg=CARD_HOVER)
+            for w in self._all_children(c):
+                try:    w.config(bg=CARD_HOVER)
+                except Exception: pass
+
+        def _leave(e, c=card):
+            c.config(highlightbackground=BORDER, bg=CARD)
+            for w in self._all_children(c):
+                try:    w.config(bg=CARD)
+                except Exception: pass
+            # badge strip keeps its colour
+            badge.config(bg=badge_color)
+
+        def _click(e, m=mode):
+            self._pick(m)
+
+        for widget in [card, inner, title_row, btn] + self._all_children(card):
+            widget.bind("<Enter>", _enter)
+            widget.bind("<Leave>", _leave)
+            widget.bind("<Button-1>", _click)
+
+        return card
+
+    @staticmethod
+    def _all_children(widget) -> list:
+        children = widget.winfo_children()
+        result = list(children)
+        for child in children:
+            result.extend(ModePicker._all_children(child))
+        return result
+
+    def _pick(self, mode: str):
+        self.result = mode
+        self.grab_release()
+        self.destroy()
+
+    def wait(self) -> str:
+        """Block until the user picks, return 'local' or 'online'."""
+        self.wait_window(self)
+        return self.result
+
+
 # ── Markdown renderer ──────────────────────────────────────────────────────
 
 def render_markdown(widget: tk.Text, text: str, lmargin: int = 20, rmargin: int = 160):
-    """
-    Parse and insert markdown-formatted text into a tk.Text widget.
-    Handles: # headings, **bold**, *italic*, `inline code`, ```blocks```, - lists, > blockquotes.
-    Falls back to plain text insertion if parsing fails.
-    """
     try:
         _render_markdown_inner(widget, text, lmargin, rmargin)
     except Exception:
-        # Nuclear fallback — always show something
         widget.insert("end", text + "\n", "md_body")
 
 
@@ -79,7 +262,6 @@ def _render_markdown_inner(widget: tk.Text, text: str, lmargin: int, rmargin: in
     code_lang = ""
 
     for line in lines:
-        # ── Code block open/close ──────────────────────────────────────
         if line.startswith("```"):
             if not in_code_block:
                 in_code_block = True
@@ -88,7 +270,6 @@ def _render_markdown_inner(widget: tk.Text, text: str, lmargin: int, rmargin: in
             else:
                 in_code_block = False
                 code_text = "\n".join(code_lines)
-                # Insert code block with background-like indentation
                 widget.insert("end", "\n", "md_pad")
                 widget.insert("end", code_text + "\n", "md_code")
                 widget.insert("end", "\n", "md_pad")
@@ -98,52 +279,36 @@ def _render_markdown_inner(widget: tk.Text, text: str, lmargin: int, rmargin: in
             code_lines.append(line)
             continue
 
-        # ── Headings ──────────────────────────────────────────────────
         h3 = re.match(r"^### (.+)", line)
         h2 = re.match(r"^## (.+)", line)
         h1 = re.match(r"^# (.+)", line)
         if h1:
-            widget.insert("end", h1.group(1) + "\n", "md_h1")
-            continue
+            widget.insert("end", h1.group(1) + "\n", "md_h1"); continue
         if h2:
-            widget.insert("end", h2.group(1) + "\n", "md_h2")
-            continue
+            widget.insert("end", h2.group(1) + "\n", "md_h2"); continue
         if h3:
-            widget.insert("end", h3.group(1) + "\n", "md_h3")
-            continue
+            widget.insert("end", h3.group(1) + "\n", "md_h3"); continue
 
-        # ── Blockquote ────────────────────────────────────────────────
         bq = re.match(r"^> (.+)", line)
         if bq:
-            widget.insert("end", "  " + bq.group(1) + "\n", "md_bq")
-            continue
+            widget.insert("end", "  " + bq.group(1) + "\n", "md_bq"); continue
 
-        # ── List item ─────────────────────────────────────────────────
         li = re.match(r"^[-*+] (.+)", line)
         if li:
-            _insert_inline(widget, "  • " + li.group(1) + "\n", lmargin, rmargin)
-            continue
+            _insert_inline(widget, "  • " + li.group(1) + "\n", lmargin, rmargin); continue
 
-        # ── Numbered list ─────────────────────────────────────────────
         nl = re.match(r"^(\d+)\. (.+)", line)
         if nl:
-            _insert_inline(widget, f"  {nl.group(1)}. {nl.group(2)}\n", lmargin, rmargin)
-            continue
+            _insert_inline(widget, f"  {nl.group(1)}. {nl.group(2)}\n", lmargin, rmargin); continue
 
-        # ── Horizontal rule ───────────────────────────────────────────
         if re.match(r"^[-*_]{3,}$", line.strip()):
-            widget.insert("end", "\n", "md_pad")
-            continue
+            widget.insert("end", "\n", "md_pad"); continue
 
-        # ── Empty line ────────────────────────────────────────────────
         if not line.strip():
-            widget.insert("end", "\n", "md_pad")
-            continue
+            widget.insert("end", "\n", "md_pad"); continue
 
-        # ── Normal paragraph with inline markup ───────────────────────
         _insert_inline(widget, line + "\n", lmargin, rmargin)
 
-    # Flush any unclosed code block
     if in_code_block and code_lines:
         widget.insert("end", "\n", "md_pad")
         widget.insert("end", "\n".join(code_lines) + "\n", "md_code")
@@ -151,8 +316,6 @@ def _render_markdown_inner(widget: tk.Text, text: str, lmargin: int, rmargin: in
 
 
 def _insert_inline(widget: tk.Text, text: str, lmargin: int, rmargin: int):
-    """Insert a line with inline **bold**, *italic*, `code` handled."""
-    # Use word-boundary aware patterns to avoid matching * inside words/strings
     pattern = re.compile(r"(\*\*(.+?)\*\*|(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)|`(.+?)`)")
     pos = 0
     try:
@@ -172,12 +335,10 @@ def _insert_inline(widget: tk.Text, text: str, lmargin: int, rmargin: int):
         if remainder:
             widget.insert("end", remainder, "md_body")
     except Exception:
-        # Fallback: insert entire line as plain body text
         widget.insert("end", text, "md_body")
 
 
 def _configure_md_tags(widget: tk.Text, lmargin: int = 20, rmargin: int = 160):
-    """Register all markdown tags on a Text widget."""
     widget.tag_config("md_h1",
         foreground=TEXT_HI, font=F_H1,
         lmargin1=lmargin, lmargin2=lmargin, rmargin=rmargin,
@@ -213,18 +374,22 @@ def _configure_md_tags(widget: tk.Text, lmargin: int = 20, rmargin: int = 160):
     widget.tag_config("md_pad", font=("Calibri", 4))
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Main agent UI
+# ─────────────────────────────────────────────────────────────────────────────
+
 class AgentUI:
-    def __init__(self, root: tk.Tk):
+    def __init__(self, root: tk.Tk, mode: str):
         self.root         = root
+        self.mode         = mode          # "local" or "online"
         self.proc         = None
         self.q            = queue.Queue()
         self.working      = False
         self._restarting  = False
         self._confirming  = False
 
-        # Log drawer state
         self._log_buffer: list[str] = []
-        self._log_group_count = 0  # for unique tag names
+        self._log_group_count = 0
 
         self._build_window()
         self._build_ui()
@@ -248,7 +413,6 @@ class AgentUI:
     # ── UI ────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-
         # ── Header ────────────────────────────────────────────────────────
         hdr = tk.Frame(self.root, bg=CARD)
         hdr.pack(fill="x")
@@ -268,9 +432,19 @@ class AgentUI:
         name_col.pack(side="left", padx=(12, 0), anchor="center")
         tk.Label(name_col, text="Pluto", fg=TEXT_HI, bg=CARD,
                  font=F_HEADER).pack(anchor="w")
-        # self.subtitle = tk.Label(name_col, text="",
-        #                          fg=TEXT_DIM, bg=CARD, font=F_SUB)
-        # self.subtitle.pack(anchor="w")
+
+        # Mode badge in header (right side)
+        right = tk.Frame(hdr, bg=CARD)
+        right.pack(side="right", padx=20)
+        badge_color = LOCAL_CLR if self.mode == "local" else ONLINE_CLR
+        badge_label = "⬡  Local" if self.mode == "local" else "✦  Online"
+        tk.Label(right, text=badge_label,
+                 fg=badge_color, bg=CARD,
+                 font=("Calibri", 9, "bold")).pack(side="right", pady=4)
+        model_label = "qwen2.5-7b" if self.mode == "local" else "Gemini 2.0 Flash"
+        tk.Label(right, text=model_label,
+                 fg=TEXT_TINY, bg=CARD,
+                 font=("Calibri", 8)).pack(side="right", padx=(0, 10), pady=4)
 
         # ── Gradient rule ──────────────────────────────────────────────────
         self._rule_canvas = tk.Canvas(self.root, height=2, bg=BG,
@@ -296,7 +470,7 @@ class AgentUI:
                   command=lambda: self._send_confirm("no")).pack(
                       side="left", ipady=5)
 
-        # Bottom border + input — packed BEFORE chat so they're always visible
+        # Input row (packed before chat so it stays at bottom)
         tk.Frame(self.root, bg=BORDER, height=1).pack(fill="x", side="bottom")
 
         input_row = tk.Frame(self.root, bg=CARD)
@@ -334,12 +508,11 @@ class AgentUI:
         self._history     = []
         self._history_pos = -1
 
-        # ── Thinking bar (hidden, shown above input) ───────────────────────
+        # ── Thinking bar ──────────────────────────────────────────────────
         self.thinking_bar = tk.Frame(self.root, bg=CARD2)
         think_inner = tk.Frame(self.thinking_bar, bg=CARD2)
         think_inner.pack(side="left", padx=20, pady=8)
 
-        # Rotating cog canvas
         self._cog_canvas = tk.Canvas(think_inner, width=18, height=18,
                                      bg=CARD2, highlightthickness=0)
         self._cog_canvas.pack(side="left", padx=(0, 8))
@@ -348,7 +521,7 @@ class AgentUI:
         tk.Label(think_inner, text="Pluto is working",
                  fg=TEXT_DIM, bg=CARD2, font=F_BODY_SM).pack(side="left")
 
-        # ── Chat area — packed LAST ────────────────────────────────────────
+        # ── Chat area (packed last — fills remaining space) ────────────────
         chat_outer = tk.Frame(self.root, bg=BG)
         chat_outer.pack(fill="both", expand=True)
 
@@ -397,7 +570,6 @@ class AgentUI:
             justify="center", spacing1=18, spacing3=8)
         self.chat.tag_config("pad", font=("Calibri", 3))
 
-        # Register markdown tags
         _configure_md_tags(self.chat, lmargin=20, rmargin=160)
 
     # ── Gradient rule ─────────────────────────────────────────────────────
@@ -421,7 +593,6 @@ class AgentUI:
     # ── Collapsible log drawer ─────────────────────────────────────────────
 
     def _flush_log_buffer(self, label: str = "Activity log"):
-        """Take whatever is in _log_buffer and create a collapsible drawer."""
         if not self._log_buffer:
             return
         lines = list(self._log_buffer)
@@ -429,14 +600,8 @@ class AgentUI:
         self._insert_log_drawer(label, lines)
 
     def _insert_log_drawer(self, label: str, lines: list[str]):
-        """
-        Insert a collapsible log section using pure text tags — no embedded
-        frames, so it's fast regardless of log volume.
-        Click the header line to expand/collapse.
-        """
         self.chat.configure(state="normal")
 
-        # Unique tag names for this drawer instance
         idx   = self._log_group_count
         self._log_group_count += 1
         h_tag = f"log_hdr_{idx}"
@@ -444,18 +609,13 @@ class AgentUI:
 
         state = {"expanded": False}
 
-        # Header line
         header_text = f"  ▶  {label}  ({len(lines)} lines)\n"
         self.chat.insert("end", "\n", "pad")
         self.chat.insert("end", header_text, (h_tag,))
 
-        # Body lines (inserted but elided/hidden by default)
-        body_start = self.chat.index("end")
         for ln in lines:
             self.chat.insert("end", f"    {ln}\n", (b_tag,))
-        body_end = self.chat.index("end")
 
-        # Style tags
         self.chat.tag_config(h_tag,
             foreground=TEXT_DIM, font=("Calibri", 9, "italic"),
             lmargin1=20, spacing1=2, spacing3=2)
@@ -489,9 +649,10 @@ class AgentUI:
     # ── Agent process ─────────────────────────────────────────────────────
 
     def _start_agent(self):
+        """Spawn main.py, passing --mode as a CLI argument."""
         try:
             self.proc = subprocess.Popen(
-                [PYTHON, "-u", AGENT_SCRIPT],
+                [PYTHON, "-u", AGENT_SCRIPT, "--mode", self.mode],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -545,7 +706,6 @@ class AgentUI:
     def _handle_line(self, line: str):
         s = line.rstrip("\n")
 
-        # ── Confirmation prompt ────────────────────────────────────────────
         if "Proceed?" in s:
             self._flush_log_buffer("Action details")
             self._show_confirm_buttons()
@@ -559,26 +719,31 @@ class AgentUI:
             self._log_buffer.append(s)
             return
 
-        # ── Ready for input ────────────────────────────────────────────────
         if "What would you like to do?" in s:
             self._enable_input()
             return
 
-        # ── Agent response ─────────────────────────────────────────────────
         if s.startswith("Agent Response:"):
             self._flush_log_buffer("Agent thoughts")
             self._set_working(False)
-
             msg = s.replace("Agent Response:", "").strip()
 
-            # Collect following lines that belong to the response
+            # Drain any lines already in the queue that belong to this response.
             extra_lines = []
             while True:
                 try:
                     nxt = self.q.get_nowait()[1].rstrip("\n")
-                    if nxt.strip() == "":
+                    if "What would you like to do?" in nxt:
                         break
-                    extra_lines.append(nxt)
+                    if any(nxt.startswith(p) for p in (
+                        "Agent Response:", "Script Output:", "Script error:",
+                        "[LLM", "[Tool", "[Directive", "[Loop Guard]"
+                    )):
+                        # Put it back so the poll loop handles it normally
+                        self.q.put(("line", nxt + "\n"))
+                        break
+                    if nxt.strip():
+                        extra_lines.append(nxt)
                 except queue.Empty:
                     break
 
@@ -586,9 +751,9 @@ class AgentUI:
                 msg += "\n" + "\n".join(extra_lines)
 
             self._agent_bubble(msg)
+            self._enable_input()   # ← always re-enable here; don't wait for ui.py's prompt
             return
 
-        # ── Script output ──────────────────────────────────────────────────
         if s.startswith("Script Output:"):
             self._flush_log_buffer("Run logs")
             out = s.replace("Script Output:", "").strip()
@@ -605,7 +770,6 @@ class AgentUI:
             self._append_raw("err_msg", f"  ✕  {s}\n")
             return
 
-        # ── Internal lines → log buffer ───────────────────────────────────
         noisy = ("[LLM", "[Tool Result]", "[Directive", "[Rephrased",
                  "[Updated State]", "[Extracted", "Goodbye!")
         if any(s.startswith(p) for p in noisy):
@@ -616,7 +780,6 @@ class AgentUI:
             self._log_buffer.append(s)
             return
 
-        # ── Errors — always show immediately ──────────────────────────────
         if "Traceback" in s or s.startswith("  File "):
             self._flush_log_buffer()
             self._append_raw("err_msg", s + "\n")
@@ -626,7 +789,6 @@ class AgentUI:
             self._append_raw("err_msg", s + "\n")
             return
 
-        # ── Everything else → log buffer ──────────────────────────────────
         if s.strip():
             self._log_buffer.append(s)
 
@@ -641,7 +803,6 @@ class AgentUI:
         self.chat.see("end")
 
     def _agent_bubble(self, text: str):
-        """Render agent response with markdown support."""
         self.chat.configure(state="normal")
         self.chat.insert("end", "\n", "pad")
         self.chat.insert("end", "  Pluto\n", "agent_lbl")
@@ -706,13 +867,11 @@ class AgentUI:
     def _send_confirm(self, answer: str):
         self._hide_confirm_buttons()
         self._system_msg(f"You chose: {answer}")
-
         try:
             self.proc.stdin.write(answer + "\n")
             self.proc.stdin.flush()
         except Exception as e:
             self._append_raw("err_msg", f"Confirm error: {e}\n")
-
         self._set_working(True)
 
     def _history_up(self, event=None):
@@ -733,23 +892,11 @@ class AgentUI:
 
     # ── Working state ─────────────────────────────────────────────────────
 
-    # def _set_working(self, state: bool):
-    #     self.working = state
-    #     if state:
-    #         self.thinking_bar.pack(fill="x", side="bottom",
-    #                                before=self.root.pack_slaves()[-1])
-    #         self.subtitle.config(text="Working…", fg=AMBER)
-    #         self._cog_tick()
-    #     else:
-    #         self.thinking_bar.pack_forget()
-    #         self._cog_canvas.delete("all")
-    #         self.subtitle.config(text="Your personal AI agent", fg=TEXT_DIM)
-
     def _set_working(self, state: bool):
         self.working = state
         if state:
             self.thinking_bar.pack(fill="x", side="bottom",
-                                before=self.root.pack_slaves()[-1])
+                                   before=self.root.pack_slaves()[-1])
             self._cog_tick()
         else:
             self.thinking_bar.pack_forget()
@@ -760,22 +907,18 @@ class AgentUI:
             return
         import math
         c  = self._cog_canvas
-        cx, cy = 9, 9          # centre
-        R_out  = 8             # outer radius (tip of teeth)
-        R_in   = 5             # inner radius (root of teeth)
-        R_hub  = 2             # centre hole
+        cx, cy = 9, 9
+        R_out  = 8
+        R_in   = 5
+        R_hub  = 2
         TEETH  = 8
         a      = self._cog_angle
 
         c.delete("all")
-
-        # Build cog polygon points
         pts = []
         for i in range(TEETH):
             base_angle = math.radians(a + i * 360 / TEETH)
             half_tooth = math.radians(360 / TEETH * 0.3)
-
-            # Four points per tooth: inner-left, outer-left, outer-right, inner-right
             for angle, radius in [
                 (base_angle - half_tooth * 1.5, R_in),
                 (base_angle - half_tooth * 0.5, R_out),
@@ -786,14 +929,11 @@ class AgentUI:
                 pts.append(cy + radius * math.sin(angle))
 
         c.create_polygon(pts, fill=ACCENT, outline="", smooth=False)
-
-        # Hub hole (draw bg-coloured circle in centre)
-        c.create_oval(cx - R_hub, cy - R_hub,
-                      cx + R_hub, cy + R_hub,
+        c.create_oval(cx - R_hub, cy - R_hub, cx + R_hub, cy + R_hub,
                       fill=CARD2, outline="")
 
-        self._cog_angle = (self._cog_angle + 6) % 360   # 6° per tick
-        self.root.after(40, self._cog_tick)              # ~25fps
+        self._cog_angle = (self._cog_angle + 6) % 360
+        self.root.after(40, self._cog_tick)
 
     # ── Enable / disable ──────────────────────────────────────────────────
 
@@ -839,10 +979,23 @@ class AgentUI:
         self.root.destroy()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Entry point
+# ─────────────────────────────────────────────────────────────────────────────
+
 def main():
     root = tk.Tk()
-    app  = AgentUI(root)
+    root.attributes("-alpha", 0)        # invisible but NOT withdrawn — Toplevel works
+    root.geometry("1x1+0+0")           # collapse to 1px so it can't be interacted with
+
+    picker = ModePicker(root)
+    mode   = picker.wait()              # blocks until a card is clicked
+
+    root.attributes("-alpha", 1)        # restore full opacity
+    root.geometry("880x680")            # restore proper size before building UI
+    AgentUI(root, mode)
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()

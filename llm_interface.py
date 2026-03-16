@@ -1,9 +1,14 @@
 import subprocess
 import json
 import re
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 
+# Load .env from project root (works regardless of working directory)
+load_dotenv(Path(__file__).parent / ".env")
 
-# ---------- Robust JSON extraction ----------
+# Robust JSON extraction
 def extract_json(text: str):
     """
     Extract JSON from LLM output.
@@ -46,7 +51,7 @@ def normalize_llm_output(parsed: dict):
             "action": parsed["type"],
             "args": parsed.get("args", {})
         }
-    
+
     # Already valid
     if parsed.get("type") == "TOOL_CALL":
         return parsed
@@ -86,31 +91,20 @@ def normalize_llm_output(parsed: dict):
     # Fallback
     return {
         "type": "RESPONSE",
-        "content": parsed.get("content","I couldn't understand that request.")
+        "content": parsed.get("content", "I couldn't understand that request.")
     }
 
 
-# ---------- Agentic LLM interface ----------
-def query_llm(user_input: str, agent_state: dict, directive: str = None):
-    """
-    Agent reasoning step. Directive is an optional override message
-    injected at the top of the prompt to break loops.
-    
-    Decides whether to:
-    - call a tool
-    - respond to the user
-    """
-
+# Shared prompt builder
+def build_prompt(user_input: str, agent_state: dict, directive: str = None) -> str:
     directive_block = ""
     if directive:
         directive_block = f"""
-        ================================================
         !! IMPORTANT DIRECTIVE (follow this NOW) !!
         {directive}
-        ================================================
         """
 
-    prompt = f"""
+    return f"""
     You are an AI SYSTEM AGENT running on Windows.
 
     You can either:
@@ -201,11 +195,11 @@ def query_llm(user_input: str, agent_state: dict, directive: str = None):
     - Include required imports.
     - Code must run without syntax errors.
     - Scripts must accept sys.argv for arguments.
-    - While running a script, also pass the required cli arguments via PROCESS args if needed. For example, python_script.py arg1
+    - While running a script, also pass the required cli arguments via PROCESS args if needed.
 
     PATH RULES
     - Prefer forward slashes (/)
-    - Wrap paths containing spaces in double quotes.  
+    - Wrap paths containing spaces in double quotes.
 
     ------------------------------------------------
     RESPONSE FORMAT
@@ -259,6 +253,9 @@ def query_llm(user_input: str, agent_state: dict, directive: str = None):
 
     """
 
+# Local backend: Qwen via Ollama
+def query_llm_local(prompt: str) -> str:
+    """Send prompt to local Ollama model and return raw text output."""
     result = subprocess.run(
         ["ollama", "run", "qwen2.5-7b-8k", "--format", "json"],
         input=prompt,
@@ -266,20 +263,64 @@ def query_llm(user_input: str, agent_state: dict, directive: str = None):
         encoding="utf-8",
         capture_output=True
     )
+    return result.stdout.strip()
 
-    raw_output = result.stdout.strip()
+
+# Online backend: Gemini
+def query_llm_gemini(prompt: str) -> str:
+    """
+    Send prompt to Gemini free-tier API and return raw JSON text.
+
+    Model used: gemini-3-flash-preview  (free tier, high quota)
+    """
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        raise ImportError(
+            "google-generativeai is not installed.\n"
+            "Run:  pip install google-generativeai"
+        )
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY environment variable is not set.\n")
+
+    client = genai.Client(api_key=api_key)
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0.2,
+        ),
+    )
+
+    # response = model.generate_content(prompt)
+    return response.text.strip()
+
+def query_llm(user_input: str, agent_state: dict, directive: str = None):
+    """
+    Agent reasoning step. Routes to local (Ollama/qwen) or online (Gemini)
+    backend based on agent_state['mode'].
+
+    agent_state['mode'] must be either "local" or "online".
+    """
+    mode = agent_state.get("mode", "local")
+    prompt = build_prompt(user_input, agent_state, directive)
+
+    if mode == "online":
+        raw_output = query_llm_gemini(prompt)
+    else:
+        raw_output = query_llm_local(prompt)
 
     try:
         parsed = extract_json(raw_output)
         normalized = normalize_llm_output(parsed)
-    
-        # print(f"\n[LLM Parsed Output]\n{json.dumps(parsed, indent=2)}")
-        # print(f"\n[LLM Normalized Output]\n{json.dumps(normalized, indent=2)}")
         return normalized
-        # return parsed
-    
+
     except Exception as e:
         print("\n[LLM RAW OUTPUT]")
         print(raw_output)
         raise e
-    
