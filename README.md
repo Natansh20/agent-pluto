@@ -261,3 +261,8 @@ Write a Python script that checks whether a number is prime and run it with inpu
 3. Show script preview and ask for confirmation
 4. Execute script with argument `13`
 5. Return output to the user
+
+## **Demo Video:**
+
+https://github.com/user-attachments/assets/b4dcbfa5-9f63-4a8a-83b8-eb127ba154a1
+
